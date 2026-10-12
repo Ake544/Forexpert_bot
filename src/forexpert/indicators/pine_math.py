@@ -179,18 +179,31 @@ def rsi(source: Series, length: int) -> Series:
     return result.rename("rsi")
 
 
-def _session_ids(index: pd.Index) -> Series | None:
-    """Group a bar index into UTC trading days, or None when it carries no dates."""
+def _session_ids(
+    index: pd.Index, session_tz: str = "UTC", session_start_hour: float = 0.0
+) -> Series | None:
+    """Group a bar index into session days, or None when it carries no dates.
+
+    A bar belongs to the session whose start is the previous ``session_start_hour``
+    local midnight in ``session_tz``. Defaults (UTC / hour 0) are plain UTC
+    calendar days. Using an IANA ``session_tz`` keeps the boundary aligned across
+    daylight-saving changes, which a fixed UTC offset cannot.
+    """
     if not isinstance(index, pd.DatetimeIndex):
         return None
-    if index.tz is None:
-        normalized = index.normalize()
-    else:
-        normalized = index.tz_convert("UTC").normalize()
-    return pd.Series(normalized, index=index)
+    aware = index.tz_localize("UTC") if index.tz is None else index.tz_convert("UTC")
+    local = aware.tz_convert(session_tz)
+    start_hour = float(session_start_hour) % 24.0
+    shifted = local - pd.Timedelta(start_hour, unit="h") if start_hour else local
+    return pd.Series(shifted.normalize(), index=index)
 
 
-def session_vwap(source: Series, volume: Series) -> Series:
+def session_vwap(
+    source: Series,
+    volume: Series,
+    session_tz: str = "UTC",
+    session_start_hour: float = 0.0,
+) -> Series:
     """``ta.vwap(source)`` with no anchor: the daily session VWAP.
 
     Pine's default anchor is ``timeframe.change("1D")``: the volume and
@@ -198,13 +211,16 @@ def session_vwap(source: Series, volume: Series) -> Series:
     exchange clock. On a daily chart each bar is therefore its own session and
     the result equals ``source``.
 
-    Sessions are the UTC calendar days of the index. An index without datetime
-    information has no session boundaries, so the whole series counts as one
-    session instead of guessing. Note this uses UTC days; a feed whose daily
-    bar opens off midnight UTC (many FX brokers) would need its own boundary.
+    Sessions default to UTC calendar days. ``session_tz`` and
+    ``session_start_hour`` move the boundary for feeds whose daily bar opens off
+    midnight UTC (many FX brokers): e.g. a broker on ``Europe/Athens`` server
+    time opens its day at local 00:00, and TradingView's FX sessions start at
+    17:00 ``America/New_York``. An index without datetime information has no
+    session boundaries, so the whole series counts as one session instead of
+    guessing.
     """
     s, v = _as_float_series(source), _as_float_series(volume)
-    sessions = _session_ids(s.index)
+    sessions = _session_ids(s.index, session_tz, session_start_hour)
     weighted = s * v
     if sessions is None:
         cumulative_volume = v.cumsum()

@@ -125,3 +125,46 @@ def test_run_once_reports_outcomes_and_exit_codes(monkeypatch, capsys) -> None:
 def test_print_table_handles_empty_input(capsys) -> None:
     cli._print_table(["A", "B"], [])
     assert "nothing to show" in capsys.readouterr().out
+
+
+def _write_config(tmp_path, body: str) -> str:
+    path = tmp_path / "config.yaml"
+    path.write_text(body, encoding="utf-8")
+    return str(path)
+
+
+def test_doctor_passes_on_the_real_config(capsys) -> None:
+    code = cli.main(["doctor"])
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "config" in out and "PASS" in out
+    assert "failure(s)" in out
+
+
+def test_doctor_flags_a_missing_csv_fixture(tmp_path, capsys) -> None:
+    csv_dir = tmp_path / "csv"
+    path = _write_config(
+        tmp_path,
+        "data:\n"
+        f"  csv:\n    directory: {csv_dir.as_posix()}\n"
+        "symbols:\n"
+        "  - {symbol: FOO, timeframe: 4h, provider: csv, profile: default}\n",
+    )
+    code = cli.main(["-c", path, "doctor"])
+    out = capsys.readouterr().out
+    assert code == 1
+    assert "FAIL" in out
+    assert "FOO_4h.csv" in out
+
+
+def test_doctor_warns_but_passes_without_a_notifier(tmp_path, capsys) -> None:
+    path = _write_config(
+        tmp_path,
+        "symbols:\n"
+        "  - {symbol: EURUSD, timeframe: 4h, provider: mt5, profile: default}\n",
+    )
+    code = cli.main(["-c", path, "doctor"])
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "WARN" in out
+    assert "no notifier enabled" in out

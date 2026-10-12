@@ -7,6 +7,9 @@ runtime:
   log_level: INFO
   log_format: "%(asctime)s %(levelname)-7s %(name)s | %(message)s"
   db_path: data/forexpert.sqlite
+  log_file: logs/forexpert.log    # rotating log; leave commented/blank for console only
+  log_max_bytes: 5000000
+  log_backup_count: 5
   max_bars_in_memory: 1000
   wake_delay_seconds: 5         # wake this many seconds after a candle close
   max_catchup_bars: 20          # on restart, replay at most N missing closed bars

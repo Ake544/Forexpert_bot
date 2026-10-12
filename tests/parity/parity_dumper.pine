@@ -7,11 +7,14 @@
 // How to use:
 //   1. Pine Editor (bottom panel) -> paste this whole file -> Save.
 //   2. "Add to chart" -> a new pane appears with a table in its top-right corner.
-//   3. Read the three rows and send them back.
+//   3. Read the rows and send them back.
+//
+// The rows are sampled at FIXED UTC timestamps (the inputs below), so the output
+// does not depend on when you run the script. The timestamps are set to the
+// bar-open time of each parity case; the matching CSV fixture is
+// tests/parity/BTCUSDT-4h.csv.
 //
 // The inputs default to config/config.yaml, so nothing needs changing.
-// Change the three `NW_BACK_*` constants below to report different bars
-// (values are "how many bars back from the newest bar").
 //
 // Source of every formula: Indicators.txt line numbers are quoted inline.
 
@@ -30,11 +33,10 @@ vslrtShort = input.int(20, "VSLRT short length")
 vslrtLong  = input.int(64, "VSLRT long length")
 atrLen     = input.int(14, "ATR length")
 
-// bars to report, counted back from the newest bar (edit the three literals
-// in the table block below to match them)
-NW_BACK_1 = 1
-NW_BACK_2 = 20
-NW_BACK_3 = 200
+// bars to report, as absolute UTC bar-open times (edit these three)
+target1    = input.time(timestamp("2026-10-12T04:00:00Z"), "Target 1 (UTC)")
+target2    = input.time(timestamp("2026-10-09T12:00:00Z"), "Target 2 (UTC)")
+target3    = input.time(timestamp("2026-09-09T12:00:00Z"), "Target 3 (UTC)")
 
 // --------------------------------------------------- VWAP Bands with ML
 // Indicators.txt 766-772
@@ -67,6 +69,17 @@ plot(mlOutput, "ML Prediction")
 plot(vslrtLongLine, "VSLRT long")
 plot(atr, "Main ATR")
 
+// ------------------------------------------- fixed-timestamp bar lookup
+// barsBack(t): bars from the newest bar back to the first bar whose open time
+// reaches `t`. Deterministic: uses the single crossing bar, so it does not drift
+// with when the script is run.
+crossing(t) => time[1] < t and time >= t
+barsBack(t) => ta.barssince(crossing(t))
+
+o1 = barsBack(target1)
+o2 = barsBack(target2)
+o3 = barsBack(target3)
+
 // ---------------------------------------------------------- the report
 tbl = table.new(position.top_right, columns = 9, rows = 4, border_width = 1)
 
@@ -81,35 +94,35 @@ if barstate.islast
     table.cell(tbl, 7, 0, "vslrt_bull",      text_size = size.small, bgcolor = color.gray, text_color = color.white)
     table.cell(tbl, 8, 0, "volume",          text_size = size.small, bgcolor = color.gray, text_color = color.white)
 
-    // row 1: newest closed bar
-    table.cell(tbl, 0, 1, str.format_time(time[NW_BACK_1], "yyyy-MM-dd'T'HH:mm:ssZ", "UTC"), text_size = size.small)
-    table.cell(tbl, 1, 1, str.tostring(close[NW_BACK_1], "#.########"), text_size = size.small)
-    table.cell(tbl, 2, 1, str.tostring(vwap[NW_BACK_1], "#.########"), text_size = size.small)
-    table.cell(tbl, 3, 1, str.tostring(mlOutput[NW_BACK_1], "#.########"), text_size = size.small)
-    table.cell(tbl, 4, 1, str.tostring(vslrtLongLine[NW_BACK_1], "#.########"), text_size = size.small)
-    table.cell(tbl, 5, 1, str.tostring(atr[NW_BACK_1], "#.########"), text_size = size.small)
-    table.cell(tbl, 6, 1, str.tostring(trendBull[NW_BACK_1]), text_size = size.small)
-    table.cell(tbl, 7, 1, str.tostring(vslrtBull[NW_BACK_1]), text_size = size.small)
-    table.cell(tbl, 8, 1, str.tostring(volume[NW_BACK_1], "#.########"), text_size = size.small)
+    // row 1: target1 (mid-session 4H)
+    table.cell(tbl, 0, 1, str.format_time(time[o1], "yyyy-MM-dd'T'HH:mm:ssZ", "UTC"), text_size = size.small)
+    table.cell(tbl, 1, 1, str.tostring(close[o1], "#.########"), text_size = size.small)
+    table.cell(tbl, 2, 1, str.tostring(vwap[o1], "#.########"), text_size = size.small)
+    table.cell(tbl, 3, 1, str.tostring(mlOutput[o1], "#.########"), text_size = size.small)
+    table.cell(tbl, 4, 1, str.tostring(vslrtLongLine[o1], "#.########"), text_size = size.small)
+    table.cell(tbl, 5, 1, str.tostring(atr[o1], "#.########"), text_size = size.small)
+    table.cell(tbl, 6, 1, str.tostring(trendBull[o1]), text_size = size.small)
+    table.cell(tbl, 7, 1, str.tostring(vslrtBull[o1]), text_size = size.small)
+    table.cell(tbl, 8, 1, str.tostring(volume[o1], "#.########"), text_size = size.small)
 
-    // row 2
-    table.cell(tbl, 0, 2, str.format_time(time[NW_BACK_2], "yyyy-MM-dd'T'HH:mm:ssZ", "UTC"), text_size = size.small)
-    table.cell(tbl, 1, 2, str.tostring(close[NW_BACK_2], "#.########"), text_size = size.small)
-    table.cell(tbl, 2, 2, str.tostring(vwap[NW_BACK_2], "#.########"), text_size = size.small)
-    table.cell(tbl, 3, 2, str.tostring(mlOutput[NW_BACK_2], "#.########"), text_size = size.small)
-    table.cell(tbl, 4, 2, str.tostring(vslrtLongLine[NW_BACK_2], "#.########"), text_size = size.small)
-    table.cell(tbl, 5, 2, str.tostring(atr[NW_BACK_2], "#.########"), text_size = size.small)
-    table.cell(tbl, 6, 2, str.tostring(trendBull[NW_BACK_2]), text_size = size.small)
-    table.cell(tbl, 7, 2, str.tostring(vslrtBull[NW_BACK_2]), text_size = size.small)
-    table.cell(tbl, 8, 2, str.tostring(volume[NW_BACK_2], "#.########"), text_size = size.small)
+    // row 2: target2 (mid-session 4H)
+    table.cell(tbl, 0, 2, str.format_time(time[o2], "yyyy-MM-dd'T'HH:mm:ssZ", "UTC"), text_size = size.small)
+    table.cell(tbl, 1, 2, str.tostring(close[o2], "#.########"), text_size = size.small)
+    table.cell(tbl, 2, 2, str.tostring(vwap[o2], "#.########"), text_size = size.small)
+    table.cell(tbl, 3, 2, str.tostring(mlOutput[o2], "#.########"), text_size = size.small)
+    table.cell(tbl, 4, 2, str.tostring(vslrtLongLine[o2], "#.########"), text_size = size.small)
+    table.cell(tbl, 5, 2, str.tostring(atr[o2], "#.########"), text_size = size.small)
+    table.cell(tbl, 6, 2, str.tostring(trendBull[o2]), text_size = size.small)
+    table.cell(tbl, 7, 2, str.tostring(vslrtBull[o2]), text_size = size.small)
+    table.cell(tbl, 8, 2, str.tostring(volume[o2], "#.########"), text_size = size.small)
 
-    // row 3
-    table.cell(tbl, 0, 3, str.format_time(time[NW_BACK_3], "yyyy-MM-dd'T'HH:mm:ssZ", "UTC"), text_size = size.small)
-    table.cell(tbl, 1, 3, str.tostring(close[NW_BACK_3], "#.########"), text_size = size.small)
-    table.cell(tbl, 2, 3, str.tostring(vwap[NW_BACK_3], "#.########"), text_size = size.small)
-    table.cell(tbl, 3, 3, str.tostring(mlOutput[NW_BACK_3], "#.########"), text_size = size.small)
-    table.cell(tbl, 4, 3, str.tostring(vslrtLongLine[NW_BACK_3], "#.########"), text_size = size.small)
-    table.cell(tbl, 5, 3, str.tostring(atr[NW_BACK_3], "#.########"), text_size = size.small)
-    table.cell(tbl, 6, 3, str.tostring(trendBull[NW_BACK_3]), text_size = size.small)
-    table.cell(tbl, 7, 3, str.tostring(vslrtBull[NW_BACK_3]), text_size = size.small)
-    table.cell(tbl, 8, 3, str.tostring(volume[NW_BACK_3], "#.########"), text_size = size.small)
+    // row 3: target3 (mid-session 4H, settled history)
+    table.cell(tbl, 0, 3, str.format_time(time[o3], "yyyy-MM-dd'T'HH:mm:ssZ", "UTC"), text_size = size.small)
+    table.cell(tbl, 1, 3, str.tostring(close[o3], "#.########"), text_size = size.small)
+    table.cell(tbl, 2, 3, str.tostring(vwap[o3], "#.########"), text_size = size.small)
+    table.cell(tbl, 3, 3, str.tostring(mlOutput[o3], "#.########"), text_size = size.small)
+    table.cell(tbl, 4, 3, str.tostring(vslrtLongLine[o3], "#.########"), text_size = size.small)
+    table.cell(tbl, 5, 3, str.tostring(atr[o3], "#.########"), text_size = size.small)
+    table.cell(tbl, 6, 3, str.tostring(trendBull[o3]), text_size = size.small)
+    table.cell(tbl, 7, 3, str.tostring(vslrtBull[o3]), text_size = size.small)
+    table.cell(tbl, 8, 3, str.tostring(volume[o3], "#.########"), text_size = size.small)

@@ -317,6 +317,17 @@ SQLite in WAL mode. Tables:
 
 Failures are isolated per symbol: one symbol erroring must not stop the others.
 
+### 4.1 Running it in production
+
+| Concern | How it is handled |
+|---|---|
+| Preflight | `forexpert doctor` — config, provider dependencies (`requests` / `MetaTrader5`), writable db/journal paths, CSV fixtures, notifier. Exit 1 on any FAIL, 0 with warnings. |
+| Read-only health | `forexpert check` fetches every enabled symbol and reports bars, volume, VWAP, ATR |
+| Long-running | `forexpert run` loops to the next candle close; schedule it once at boot (Windows Task Scheduler "At log on", or a service wrapper). No cron-per-bar needed. |
+| Shutdown | `Ctrl+C` (or a service stop) is a clean stop: state is saved, `run_forever` returns the last pass, exit 0 |
+| Logs | console by default; set `runtime.log_file` for a rotating file (`log_max_bytes`, `log_backup_count`) |
+| Keep-alive | MT5 needs the terminal running; a fetch failure alerts once per `error_cooldown_minutes` instead of failing the pass |
+
 ---
 
 ## 5. Correctness principles
@@ -369,6 +380,8 @@ Run with `python -m pytest`.
 | `runtime.max_catchup_bars` | bounded restart replay |
 | `data.volume_policy` | `strict` = never compute VWAP without volume |
 | `strategy.touch_definition` | `wick` \| `close` |
+| `ml_vwap.session_tz` | IANA zone whose day the VWAP resets on (default `UTC`) |
+| `ml_vwap.session_start_hour` | local hour the VWAP session day starts (default `0`) |
 | `strategy.expiry_bars` | bars beyond candle 2 before the setup dies |
 | `strategy.filters_on_entry_bar` | strict-on-touch vs sticky-from-candle-1 |
 | `risk.risk_percent_per_trade` | risk per trade in % of balance |
@@ -378,7 +391,7 @@ Run with `python -m pytest`.
 
 ## 9. Status and open gaps
 
-**Built and tested (249 unit tests passing):** config, all five candle sources,
+**Built and tested (259 unit tests passing):** config, all five candle sources,
 all ported indicators, the state machine, risk levels, SQLite persistence, the
 runtime (`runner.py` → fetch → indicators → both machines → store →
 `journal.jsonl` → notifiers, with per-symbol error isolation, bounded catch-up,
@@ -403,8 +416,9 @@ then disabled (see below), so the monitored book is **10 4H pairs: 136 signals,
 
 | Command | What it does |
 |---|---|
-| `forexpert run` | live loop (`--once`, `--max-passes N`) |
+| `forexpert run` | live loop (`--once`, `--max-passes N`); clean stop on Ctrl+C |
 | `forexpert check` | read-only health table for every symbol: bars, volume, VWAP, ATR |
+| `forexpert doctor` | environment preflight: config, dependencies, paths, CSV fixtures, notifier |
 | `forexpert backtest` | replay history (`--symbol`, `--timeframe`, `--bars`, `--max-hold`, `--json`); an explicit `--symbol` also reaches disabled pairs |
 
 **Live-verified:** FX volume (MT5, 17/17 symbol configs, volume never zero) and
@@ -431,7 +445,12 @@ now resets the running sums at each **UTC** trading day (bars without datetime
 information are treated as one session). Consequence: on 1D symbols `vwap_bull`
 collapses to a lagged-SMA/close test and the touch line equals close; on 4h
 symbols the VWAP resets daily. Known deviation: FX feeds whose daily bar opens
-off midnight UTC (most brokers) would need their own session boundary.
+off midnight UTC (most brokers) would need their own session boundary, which is
+now configurable per profile via `ml_vwap.session_tz` / `session_start_hour`
+(e.g. TradingView's FX day starts at 17:00 `America/New_York`). Note that
+`Mt5Source` returns MetaTrader's bar times as Unix seconds, so a broker's 00:00
+server bar lands at 00:00 in our index — the default UTC boundary already equals
+the broker day for those feeds.
 
 **1D degeneracy (consequence of the fix, DONE):** because the session VWAP on a
 daily bar *is* the close, `touch_line: vwap` makes the state machine's first
@@ -453,9 +472,15 @@ reaches a disabled pair, so a candidate can be tested before enabling it.
    snapshot (not a session-rule bug, since session-first bars match) — needs a
    fresh read at a mid-session bar to confirm. Also consider a broker-day session
    boundary for the FX feeds.
-2. **1D viability** — re-enable the 8 1D pairs only with a different level or
+2. **FX parity case** — the harness is apples-to-apples only when both sides read
+   the *same* candles. TradingView carries `BINANCE:BTCUSDT` (which our Binance
+   REST fixture matches) but no MetaQuotes feed, and OANDA/FXCM candles differ
+   from our MT5 broker's, so a TV-vs-MT5 FX case would fail on candles, not on
+   indicator maths. Left open until a matching free FX feed exists; the session
+   boundary it would depend on is already configurable (above).
+3. **1D viability** — re-enable the 8 1D pairs only with a different level or
    anchoring (the ML VWAP degenerates on daily bars), and the expected signal
    count is very low.
-3. **KRO confirmation** — blocked on the missing `QuantraSystems` library source.
-4. **Live FX feed stability** — MetaQuotes demo history can be trimmed by the
+4. **KRO confirmation** — blocked on the missing `QuantraSystems` library source.
+5. **Live FX feed stability** — MetaQuotes demo history can be trimmed by the
    broker; `DukascopySource` stays as a tested fallback.

@@ -100,6 +100,45 @@ def test_session_vwap_without_dates_treats_the_whole_series_as_one_session() -> 
     assert result.iloc[1] == pytest.approx(3.0)
 
 
+def test_session_vwap_honours_a_shifted_start_hour() -> None:
+    # A 22:00 UTC boundary keeps 21:00 and 22:00 on opposite sides: with the
+    # default UTC day they would share a session.
+    index = pd.to_datetime(
+        ["2024-01-01 21:00", "2024-01-01 22:00", "2024-01-01 23:00"], utc=True
+    )
+    source = pd.Series([10.0, 20.0, 40.0], index=index)
+    volume = pd.Series([1.0, 1.0, 1.0], index=index)
+    shifted = pm.session_vwap(source, volume, session_tz="UTC", session_start_hour=22)
+    assert shifted.iloc[0] == pytest.approx(10.0)  # last bar before the boundary
+    assert shifted.iloc[1] == pytest.approx(20.0)  # 22:00 opens the new session
+    assert shifted.iloc[2] == pytest.approx((20.0 + 40.0) / 2)
+
+
+def test_session_vwap_in_a_time_zone_keeps_dst_alignment() -> None:
+    # Broker server day: 00:00 Europe/Athens. A UTC bar at 22:00 in winter
+    # (EET, UTC+2) is already the *next* local day, so it must open a session.
+    index = pd.to_datetime(
+        ["2024-01-15 21:00", "2024-01-15 22:00", "2024-01-15 23:00"], utc=True
+    )
+    source = pd.Series([10.0, 20.0, 40.0], index=index)
+    volume = pd.Series([1.0, 1.0, 1.0], index=index)
+    broker = pm.session_vwap(source, volume, session_tz="Europe/Athens")
+    assert broker.iloc[0] == pytest.approx(10.0)
+    assert broker.iloc[1] == pytest.approx(20.0)
+    assert broker.iloc[2] == pytest.approx((20.0 + 40.0) / 2)
+
+
+def test_session_vwap_shifted_hour_classifies_overnight_bars() -> None:
+    # Two bars either side of midnight UTC still belong to one 22:00 session.
+    index = pd.to_datetime(
+        ["2024-01-01 23:00", "2024-01-02 01:00"], utc=True
+    )
+    source = pd.Series([10.0, 30.0], index=index)
+    volume = pd.Series([1.0, 1.0], index=index)
+    result = pm.session_vwap(source, volume, session_start_hour=22)
+    assert result.iloc[1] == pytest.approx(20.0)
+
+
 def test_truncate_toward_zero_for_both_signs() -> None:
     assert pm.truncate(0.0123456789, 5) == pytest.approx(0.01234)
     assert pm.truncate(-0.0123456789, 5) == pytest.approx(-0.01234)

@@ -54,6 +54,30 @@ def test_unknown_indicator_key_is_rejected(tmp_path: Path) -> None:
         load_config(bad)
 
 
+def test_vwap_session_anchor_defaults_to_utc() -> None:
+    config = load_config(CONFIG_PATH)
+    for symbol in config.symbols:
+        assert symbol.params.ml_vwap.session_tz == "UTC"
+        assert symbol.params.ml_vwap.session_start_hour == 0.0
+
+
+def test_vwap_session_anchor_is_configurable_per_profile(tmp_path: Path) -> None:
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        "profiles:\n"
+        "  default:\n"
+        "    ml_vwap:\n"
+        "      session_tz: Europe/Athens\n"
+        "      session_start_hour: 22\n"
+        "symbols:\n"
+        "  - {symbol: EURUSD, timeframe: 4h, profile: default}\n",
+        encoding="utf-8",
+    )
+    config = load_config(config_file)
+    assert config.symbols[0].params.ml_vwap.session_tz == "Europe/Athens"
+    assert config.symbols[0].params.ml_vwap.session_start_hour == 22.0
+
+
 def test_missing_config_file_is_rejected() -> None:
     with pytest.raises(ConfigError):
         load_config(REPO_ROOT / "config" / "does_not_exist.yaml")

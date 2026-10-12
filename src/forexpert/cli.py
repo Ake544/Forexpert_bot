@@ -4,13 +4,16 @@ Commands
 --------
 run      the live loop (fetch → indicators → machines → journal → notify)
 check    fetch every configured symbol and print data health — read-only
+doctor   preflight the environment (config, dependencies, paths, notifier)
 backtest replay history through the same pipeline and simulate the trades
 """
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import logging
+from pathlib import Path
 from typing import Any, Sequence
 
 import pandas as pd
@@ -47,6 +50,8 @@ def build_parser() -> argparse.ArgumentParser:
     check_p = sub.add_parser("check", help="fetch every symbol and print data health")
     check_p.add_argument("--bars", type=int, default=None, help="bars to fetch")
 
+    sub.add_parser("doctor", help="preflight the environment before going live")
+
     backtest_p = sub.add_parser(
         "backtest", help="replay history through the strategy and simulate trades"
     )
@@ -67,10 +72,33 @@ def build_parser() -> argparse.ArgumentParser:
 def _configure_logging(config: AppConfig) -> None:
     runtime = config.runtime or {}
     level = getattr(logging, str(runtime.get("log_level", "INFO")).upper(), logging.INFO)
-    logging.basicConfig(
-        level=level,
-        format=str(runtime.get("log_format", DEFAULT_LOG_FORMAT)),
-    )
+    fmt = logging.Formatter(str(runtime.get("log_format", DEFAULT_LOG_FORMAT)))
+    root = logging.getLogger()
+    root.setLevel(level)
+
+    if not any(getattr(handler, "_forexpert_console", False) for handler in root.handlers):
+        stream = logging.StreamHandler()
+        stream.setFormatter(fmt)
+        stream._forexpert_console = True  # type: ignore[attr-defined]
+        root.addHandler(stream)
+
+    log_file = runtime.get("log_file")
+    if log_file:
+        from logging.handlers import RotatingFileHandler
+
+        path = Path(str(log_file)).resolve()
+        if str(path) not in {
+            getattr(handler, "baseFilename", None) for handler in root.handlers
+        }:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            rotating = RotatingFileHandler(
+                path,
+                maxBytes=int(runtime.get("log_max_bytes", 5_000_000)),
+                backupCount=int(runtime.get("log_backup_count", 5)),
+                encoding="utf-8",
+            )
+            rotating.setFormatter(fmt)
+            root.addHandler(rotating)
 
 
 def _select(config: AppConfig, args: argparse.Namespace) -> list[SymbolConfig]:
@@ -155,6 +183,98 @@ def cmd_check(config: AppConfig, args: argparse.Namespace) -> int:
     return 1 if failures else 0
 
 
+# Provider -> the third-party module it needs at fetch time. `csv` needs none.
+_PROVIDER_DEPENDENCIES = {
+    "twelve_data": "requests",
+    "binance": "requests",
+    "dukascopy": "requests",
+    "mt5": "MetaTrader5",
+}
+
+
+def _writable(path: Path) -> str | None:
+    """Return None when `path` (a file) can be written, else the error text."""
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        probe = path.parent / f".{path.name}.writecheck"
+        probe.write_text("", encoding="utf-8")
+        probe.unlink()
+    except OSError as exc:
+        return str(exc)
+    return None
+
+
+def cmd_doctor(config: AppConfig, args: argparse.Namespace) -> int:
+    """Preflight the environment: config, dependencies, paths and notifier.
+
+    Read-only apart from writing a throwaway probe file next to the database and
+    journal, so it is safe to run before every deployment. Exit code 1 when any
+    check FAILs (warnings alone exit 0).
+    """
+    rows: list[list[str]] = []
+
+    def check(name: str, problems: list[str], warn: bool = False) -> None:
+        if problems:
+            rows.append([name, "WARN" if warn else "FAIL", "; ".join(problems)])
+        else:
+            rows.append([name, "PASS", ""])
+
+    enabled = config.enabled_symbols()
+    check(
+        "config",
+        [] if enabled else ["no enabled symbols (all disabled in config.yaml)"],
+    )
+
+    providers = sorted({s.provider for s in enabled})
+    provider_problems: list[str] = []
+    for provider in providers:
+        module = _PROVIDER_DEPENDENCIES.get(provider)
+        if module is None:
+            continue
+        if importlib.util.find_spec(module) is None:
+            provider_problems.append(f"{provider} needs '{module}'")
+    check("dependencies", provider_problems)
+
+    runtime = config.runtime or {}
+    path_problems: list[str] = []
+    db_problem = _writable(Path(str(runtime.get("db_path", "data/forexpert.sqlite"))))
+    if db_problem:
+        path_problems.append(f"db: {db_problem}")
+    journal_cfg = config.journal or {}
+    if journal_cfg.get("enabled", True):
+        journal_problem = _writable(Path(str(journal_cfg.get("path", "data/journal.jsonl"))))
+        if journal_problem:
+            path_problems.append(f"journal: {journal_problem}")
+    check("paths", path_problems)
+
+    csv_symbols = [s for s in enabled if s.provider == "csv"]
+    if csv_symbols:
+        csv_dir = Path(str((config.data.get("csv") or {}).get("directory", "data/csv")))
+        missing = [
+            f"{s.symbol}_{s.timeframe}.csv"
+            for s in csv_symbols
+            if not (csv_dir / f"{s.symbol.upper()}_{s.timeframe}.csv").is_file()
+        ]
+        check("csv files", [f"missing in {csv_dir}: {', '.join(missing)}"] if missing else [])
+
+    from .notify import build_notifier
+
+    notifier = build_notifier(
+        {"telegram": config.notifier.telegram, "discord": config.notifier.discord}
+    )
+    check(
+        "notifier",
+        [] if notifier.name != "null" else ["no notifier enabled; alerts are logged only"],
+        warn=True,
+    )
+
+    _print_table(["CHECK", "STATUS", "DETAIL"], rows)
+    failed = sum(1 for row in rows if row[1] == "FAIL")
+    warned = sum(1 for row in rows if row[1] == "WARN")
+    print(f"\n{len(rows) - failed - warned} passed, {warned} warning(s), {failed} failure(s)")
+    return 1 if failed else 0
+
+
 def cmd_backtest(config: AppConfig, args: argparse.Namespace) -> int:
     symbols = _select(config, args)
     if not symbols:
@@ -219,7 +339,7 @@ def _print_table(headers: list[str], rows: list[list[str]]) -> None:
         print("  ".join(cell.ljust(widths[i]) for i, cell in enumerate(row)))
 
 
-COMMANDS = {"run": cmd_run, "check": cmd_check, "backtest": cmd_backtest}
+COMMANDS = {"run": cmd_run, "check": cmd_check, "doctor": cmd_doctor, "backtest": cmd_backtest}
 
 
 def resolve_command(args: argparse.Namespace) -> str:

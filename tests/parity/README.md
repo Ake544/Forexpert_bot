@@ -13,13 +13,18 @@ allows only a couple of indicators per chart. So parity is proven by:
    so `BINANCE:BTCUSDT` on a 1D/UTC chart has the exact candles of
    `BTCUSDT-1d.csv` (regenerate it with `fetch_binance_csv.py`).
 2. **One dumper script.** `parity_dumper.pine` recomputes *all four* indicators
-   in a single Pine v5 script and prints a 3-row table (1, 20 and 200 bars back)
-   with the values plus the trend/vslrt bull flags. Paste it into the Pine
-   Editor on the `BINANCE:BTCUSDT` 1D chart, time zone UTC.
+   in a single Pine v5 script and prints a 3-row table with the values plus the
+   trend/vslrt bull flags (and the bar's volume, for diagnosing data drift). The
+   rows are sampled at the **fixed UTC bar-open times** of its three `targetN`
+   inputs, so the output does not depend on when the script is run. Paste it into
+   the Pine Editor on the `BINANCE:BTCUSDT` 4H chart, time zone UTC, set the three
+   targets to the case times, and read the table.
 3. **Read the table** and add a case per row.
 
 When adding cases for an intraday timeframe, both sides must see the same
-history depth (see the VWAP warning below).
+history depth (see the VWAP warning below), and prefer bars in settled history —
+a bar sampled relative to "now" can sit next to a still-forming bar whose volume
+TradingView has not finalized, which shows up as a VWAP (and only VWAP) mismatch.
 
 ## TradingView facts this harness encodes
 
@@ -27,8 +32,9 @@ history depth (see the VWAP warning below).
   **daily session** anchor that resets at the start of each trading day on the
   exchange clock. On a daily chart every bar is its own session, so the VWAP
   line simply equals `close`. Our port resets on UTC days
-  (`pine_math.session_vwap`). A feed whose daily bar opens off midnight UTC (many
-  FX brokers) would need its own session boundary.
+  (`pine_math.session_vwap`) and the boundary is configurable per profile via
+  `ml_vwap.session_tz` / `session_start_hour` for feeds whose day opens off
+  midnight UTC (e.g. TradingView's FX day starts at 17:00 `America/New_York`).
 * `Trend Meter` plots **states**, not MA values, so `trend_fast`/`trend_slow`
   cannot be read off the chart. `trend_bull` is checked instead.
 * `NNFX ATR` truncates to 5 decimals, matching `pine_math.truncate`.

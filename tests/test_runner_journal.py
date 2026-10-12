@@ -1,6 +1,7 @@
 """Journal, notifier and runner tests. No network: everything is faked."""
 from __future__ import annotations
 
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -485,3 +486,33 @@ def test_bar_time_comparisons_are_utc_aware(tmp_path: Path) -> None:
     assert machine.state.last_bar_time == bars[-1].time
     assert machine.state.last_bar_time.tzinfo is not None
     assert machine.state.bars_seen == 1
+
+
+# --------------------------------------------------------------------- looping
+def test_run_forever_stops_cleanly_on_keyboard_interrupt(tmp_path, monkeypatch) -> None:
+    runner, _notifier, _journal = make_runner(tmp_path)
+    calls = {"n": 0}
+
+    def fake_pass() -> list:
+        calls["n"] += 1
+        if calls["n"] >= 2:
+            raise KeyboardInterrupt
+        return []
+
+    monkeypatch.setattr(runner, "run_once", fake_pass)
+    monkeypatch.setattr(time, "sleep", lambda _seconds: None)
+    saved = {"n": 0}
+    monkeypatch.setattr(runner, "_save_state", lambda: saved.__setitem__("n", saved["n"] + 1))
+
+    outcomes = runner.run_forever()
+
+    assert outcomes == []           # the last successful pass is returned
+    assert calls["n"] == 2          # interrupted on the second pass
+    assert saved["n"] == 1          # state saved exactly once on shutdown
+
+
+def test_run_forever_honours_max_passes(tmp_path, monkeypatch) -> None:
+    runner, _notifier, _journal = make_runner(tmp_path)
+    monkeypatch.setattr(time, "sleep", lambda _seconds: None)
+    outcomes = runner.run_forever(max_passes=3)
+    assert len(outcomes) == 1       # one symbol in the fixture config

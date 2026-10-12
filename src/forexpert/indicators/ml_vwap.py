@@ -61,6 +61,8 @@ def compute_ml_vwap(
     sigma: float = 0.1,
     band1_multiplier: float = 2.0,
     band2_multiplier: float = 3.0,
+    session_tz: str = "UTC",
+    session_start_hour: float = 0.0,
 ) -> MlVwapResult:
     """Port of the CryptoSea ML VWAP indicator.
 
@@ -69,19 +71,21 @@ def compute_ml_vwap(
         volume: Bar volume. The Pine VWAP is volume weighted, so this cannot be
             faked. Callers must enforce a volume policy upstream. The VWAP is
             session anchored (Pine's default ``timeframe.change("1D")``), so it
-            resets at each UTC trading day and equals ``close`` on daily bars.
+            resets at each trading day and equals ``close`` on daily bars.
         window: ML Window (SMA length used for the ML base and for the stdev).
         forecast: Shifts the ML output FORWARD by N bars (``ml_adjusted[forecast]``).
         sigma: Weight of VWAP inside the ML blend.
         band1_multiplier: Band 1 multiplier (plotted only).
         band2_multiplier: Band 2 multiplier (plotted only).
+        session_tz: IANA time zone whose day is the VWAP session (default UTC).
+        session_start_hour: Local hour at which the session day starts.
     """
     if window <= 1:
         raise ValueError("window must be > 1")
     if forecast < 0:
         raise ValueError("forecast must be >= 0")
 
-    vwap = session_vwap(close, volume)
+    vwap = session_vwap(close, volume, session_tz, session_start_hour)
     ml_base = sma(close, window)
     ml_adjusted = ml_base + sigma * (vwap - ml_base)
     ml_output = ml_adjusted.shift(forecast)

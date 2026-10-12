@@ -62,13 +62,22 @@ def _expand(value: Any) -> Any:
 
 @dataclass(frozen=True)
 class MlVwapParams:
-    """Inputs of 'VWAP Bands with ML [CryptoSea]'."""
+    """Inputs of 'VWAP Bands with ML [CryptoSea]'.
+
+    ``session_tz`` / ``session_start_hour`` set the VWAP's daily anchor to match
+    the chart's trading day. Defaults (UTC / 0) match a UTC-anchored chart;
+    a broker whose daily bar opens off midnight UTC (most FX brokers) sets these
+    to its server time zone so the ported VWAP resets on the same bar as Pine's
+    ``timeframe.change("1D")``.
+    """
 
     window: int = 300
     forecast: int = 1
     sigma: float = 0.1
     band1_multiplier: float = 2.0
     band2_multiplier: float = 3.0
+    session_tz: str = "UTC"
+    session_start_hour: float = 0.0
 
 
 @dataclass(frozen=True)

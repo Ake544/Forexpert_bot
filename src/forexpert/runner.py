@@ -356,19 +356,32 @@ class Runner:
             best = remaining if best is None else min(best, remaining)
         return float(best if best is not None else 60.0)
 
-    def run_forever(self, max_passes: int | None = None) -> None:
+    def run_forever(self, max_passes: int | None = None) -> list[SymbolOutcome]:
+        """Loop passes until stopped, returning the outcomes of the last pass.
+
+        ``Ctrl+C`` (KeyboardInterrupt) is treated as a normal stop: the current
+        state is saved and whatever the last pass produced is returned, so the
+        CLI can still print a summary and exit 0.
+        """
         passes = 0
-        while max_passes is None or passes < max_passes:
-            outcomes = self.run_once()
-            passes += 1
-            signals = sum(len(o.signals) for o in outcomes)
-            errors = [o for o in outcomes if not o.ok]
-            LOGGER.info("pass %s: %s signals, %s errors", passes, signals, len(errors))
-            if max_passes is not None and passes >= max_passes:
-                break
-            delay = max(1.0, self.seconds_until_next_close())
-            LOGGER.debug("sleeping %.1fs", delay)
-            time.sleep(delay)
+        outcomes: list[SymbolOutcome] = []
+        try:
+            while max_passes is None or passes < max_passes:
+                outcomes = self.run_once()
+                passes += 1
+                signals = sum(len(o.signals) for o in outcomes)
+                errors = [o for o in outcomes if not o.ok]
+                LOGGER.info("pass %s: %s signals, %s errors", passes, signals, len(errors))
+                if max_passes is not None and passes >= max_passes:
+                    break
+                delay = max(1.0, self.seconds_until_next_close())
+                LOGGER.debug("sleeping %.1fs", delay)
+                time.sleep(delay)
+        except KeyboardInterrupt:
+            LOGGER.info("interrupted after %s pass(es), shutting down", passes)
+        finally:
+            self._save_state()
+        return outcomes
 
 
 def _timeframe_minutes(timeframe: str) -> int:

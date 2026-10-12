@@ -128,6 +128,8 @@ def compute_indicators(
         sigma=params.ml_vwap.sigma,
         band1_multiplier=params.ml_vwap.band1_multiplier,
         band2_multiplier=params.ml_vwap.band2_multiplier,
+        session_tz=params.ml_vwap.session_tz,
+        session_start_hour=params.ml_vwap.session_start_hour,
     )
     trend = compute_trend_meter(
         close=frame["close"],

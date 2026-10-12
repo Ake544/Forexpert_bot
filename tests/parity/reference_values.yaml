@@ -74,3 +74,40 @@ cases:
     trend_bull: true
     vslrt_bull: true
     tolerance: 1.0e-5
+
+  # MID-SESSION 4H bars: the session VWAP is a real volume-weighted average of
+  # several bars, not just the close. These prove the intraday session anchor
+  # (and the 2026-10-12 row resolves the earlier mismatch, which was a chart
+  # timezone artifact: the old read was not UTC).
+  - bar_time: "2026-10-12T04:00:00+00:00"
+    csv_file: BTCUSDT-4h.csv
+    ml_window: 300
+    vwap: 83824.41293938
+    ml_output: 81193.21044
+    vslrt_long_line: -3218.80297436
+    atr: 597.86526
+    trend_bull: true
+    vslrt_bull: false
+    tolerance: 1.0e-6
+
+  - bar_time: "2026-10-09T12:00:00+00:00"
+    csv_file: BTCUSDT-4h.csv
+    ml_window: 300
+    vwap: 82828.5123734
+    ml_output: 80783.19775804
+    vslrt_long_line: -733.95010989
+    atr: 862.02214
+    trend_bull: false
+    vslrt_bull: false
+    tolerance: 1.0e-6
+
+  - bar_time: "2026-09-09T12:00:00+00:00"
+    csv_file: BTCUSDT-4h.csv
+    ml_window: 300
+    vwap: 78899.92123245
+    ml_output: 70913.48081631
+    vslrt_long_line: 1430.44701832
+    atr: 784.50467
+    trend_bull: true
+    vslrt_bull: true
+    tolerance: 1.0e-6

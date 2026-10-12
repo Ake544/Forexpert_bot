@@ -354,7 +354,7 @@ Failures are isolated per symbol: one symbol erroring must not stop the others.
 | State machine | `conftest.make_bar()` builds deterministic candles around a 100.0 level; sequences cover valid/invalid/expiry/cooldown/sticky/confirmations |
 | Risk | sizing and rounding rules, incl. the `min_lot` skip |
 | Data layer | fake HTTP sessions and synthetic LZMA payloads — **no network in the suite** |
-| Parity | `tests/parity/reference_values.yaml` holds values transcribed from TradingView (3 BTCUSDT 1D + 2 BTCUSDT 4H cases); `parity_dumper.pine` recomputes all four indicators on the TV chart |
+| Parity | `tests/parity/reference_values.yaml` holds values transcribed from TradingView (3 BTCUSDT 1D + 5 BTCUSDT 4H cases, 3 of them mid-session); `parity_dumper.pine` recomputes all four indicators on the TV chart |
 | End-to-end | backtest over cached candles (planned) |
 
 Run with `python -m pytest`.
@@ -391,7 +391,7 @@ Run with `python -m pytest`.
 
 ## 9. Status and open gaps
 
-**Built and tested (259 unit tests passing):** config, all five candle sources,
+**Built and tested (262 unit tests passing):** config, all five candle sources,
 all ported indicators, the state machine, risk levels, SQLite persistence, the
 runtime (`runner.py` → fetch → indicators → both machines → store →
 `journal.jsonl` → notifiers, with per-symbol error isolation, bounded catch-up,
@@ -429,12 +429,21 @@ no duplicate signal.
 **Parity (green):** `tests/parity/` proves the ports against real TradingView
 values. Chart-data export is paywalled on a free plan and only ~2 indicators fit
 per chart, so `parity_dumper.pine` recomputes all four indicators in one Pine v5
-script and prints a 3-row table (1/20/200 bars back); its output is transcribed
+script and prints a 3-row table, sampled at **fixed UTC bar-open times** (so the
+output does not drift with when the chart is scrolled); its output is transcribed
 into `reference_values.yaml`. TradingView serves `BTCUSDT` from Binance, so the
-`BINANCE:BTCUSDT` 1D/UTC chart shares its candles with the bundled
-`BTCUSDT-1d.csv`. Three bars across 2026 matched to 1e-6 relative on
-`vslrt_long_line` and `atr` and exactly on the bull flags, which caught the VWAP
-bug below.
+`BINANCE:BTCUSDT` UTC chart shares its candles with the bundled CSVs.
+**8 BTCUSDT cases pass** — 3 on 1D (`BTCUSDT-1d.csv`) and 5 on 4H
+(`BTCUSDT-4h.csv`), three of the 4H ones intentionally **mid-session** so the
+session VWAP is a real multi-bar average rather than the close. All match to
+1e-6 relative on `vwap`/`ml_output`/`vslrt_long_line`/`atr` and exactly on the
+bull flags, which caught the VWAP bug below.
+
+> The earlier mid-session 4H "mismatch" (TV vwap 83724.42 vs ours 83824.41 at
+> `2026-10-12 04:00`) was a **chart-timezone artifact**: the first read was not in
+> UTC, so its "04:00" label was a different UTC bar. Re-read in UTC, that same bar
+> matches our `83824.41293938` exactly. No code change was needed; the parity is
+> now proven on mid-session bars.
 
 **VWAP anchor bug (found by parity, fixed):** Pine's `ta.vwap(source)` with no
 anchor defaults to `timeframe.change("1D")` — a **daily session** anchor, so on a
@@ -463,24 +472,15 @@ reaches a disabled pair, so a candidate can be tested before enabling it.
 
 **Open:**
 
-1. **Parity coverage** — 3 BTCUSDT 1D + 2 BTCUSDT 4H cases pass. The 4H cases
-   are session-first bars (VWAP = close). A mid-session 4H bar (`2026-10-12
-   04:00`) did **not** reproduce: TV returned vwap 83724.42 and atr 597.65276
-   against our 83824.41 / 597.86526, while `close` and `ml_output` matched
-   exactly, and no source/window on `BTCUSDT-4h.csv` reproduces TV's vwap. This
-   points at TV's recent 4H bars or volume differing from the Binance REST
-   snapshot (not a session-rule bug, since session-first bars match) — needs a
-   fresh read at a mid-session bar to confirm. Also consider a broker-day session
-   boundary for the FX feeds.
-2. **FX parity case** — the harness is apples-to-apples only when both sides read
+1. **FX parity case** — the harness is apples-to-apples only when both sides read
    the *same* candles. TradingView carries `BINANCE:BTCUSDT` (which our Binance
    REST fixture matches) but no MetaQuotes feed, and OANDA/FXCM candles differ
    from our MT5 broker's, so a TV-vs-MT5 FX case would fail on candles, not on
    indicator maths. Left open until a matching free FX feed exists; the session
    boundary it would depend on is already configurable (above).
-3. **1D viability** — re-enable the 8 1D pairs only with a different level or
+2. **1D viability** — re-enable the 8 1D pairs only with a different level or
    anchoring (the ML VWAP degenerates on daily bars), and the expected signal
    count is very low.
-4. **KRO confirmation** — blocked on the missing `QuantraSystems` library source.
-5. **Live FX feed stability** — MetaQuotes demo history can be trimmed by the
+3. **KRO confirmation** — blocked on the missing `QuantraSystems` library source.
+4. **Live FX feed stability** — MetaQuotes demo history can be trimmed by the
    broker; `DukascopySource` stays as a tested fallback.

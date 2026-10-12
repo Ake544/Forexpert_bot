@@ -83,6 +83,16 @@ def test_backtest_json_is_machine_readable(capsys, offline_sources) -> None:
     assert {"signals", "closed", "win_rate", "total_r"} <= payload["total"].keys()
 
 
+def test_explicit_symbol_selects_a_disabled_pair() -> None:
+    """An explicit --symbol reaches disabled pairs; the default set does not."""
+    config = cli.load_config()
+    disabled = next(s for s in config.symbols if not s.enabled)
+
+    chosen = cli._select(config, SimpleNamespace(symbol=[disabled.symbol], timeframe=None))
+    assert any(s.symbol == disabled.symbol and not s.enabled for s in chosen)
+    assert disabled not in config.enabled_symbols()
+
+
 def test_backtest_with_no_matching_symbol_exits_2(capsys) -> None:
     code = cli.main(["backtest", "--symbol", "NOTAPAIR"])
     assert code == 2

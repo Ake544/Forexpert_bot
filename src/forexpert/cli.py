@@ -74,10 +74,17 @@ def _configure_logging(config: AppConfig) -> None:
 
 
 def _select(config: AppConfig, args: argparse.Namespace) -> list[SymbolConfig]:
-    selected = config.enabled_symbols()
+    """Symbols a command should act on.
+
+    Without ``--symbol`` the monitored book is used. An explicit ``--symbol``
+    searches every configured pair, disabled ones included, so a candidate can
+    be backtested before it is enabled.
+    """
     if args.symbol:
         wanted = {s.upper() for s in args.symbol}
-        selected = [s for s in selected if s.symbol.upper() in wanted]
+        selected = [s for s in config.symbols if s.symbol.upper() in wanted]
+    else:
+        selected = config.enabled_symbols()
     if args.timeframe:
         selected = [s for s in selected if s.timeframe == args.timeframe]
     return selected

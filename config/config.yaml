@@ -119,12 +119,17 @@ profiles:
 # (symbol, timeframe) pairs transcribed from trading strategy.docx
 # ---------------------------------------------------------------------------
 symbols:
-  - {symbol: NZDCAD, timeframe: 1d, provider: mt5, profile: default, enabled: true}
+  # The 1D entries are DISABLED: the ML-VWAP VWAP is session-anchored, so on a
+  # daily bar it IS the close and the "close beyond the level" candle can never
+  # form (verified: 0 signals over 3344 daily bars, and ml_output only yields 7
+  # in 9 years). The strategy is intraday-only; re-enable only with a different
+  # level/anchoring. See arch.md "Open".
+  - {symbol: NZDCAD, timeframe: 1d, provider: mt5, profile: default, enabled: false}
   - {symbol: CHFJPY, timeframe: 4h, provider: mt5, profile: default, enabled: true}
-  - {symbol: EURCHF, timeframe: 1d, provider: mt5, profile: default, enabled: true}
+  - {symbol: EURCHF, timeframe: 1d, provider: mt5, profile: default, enabled: false}
   - {symbol: GBPJPY, timeframe: 4h, provider: mt5, profile: default, enabled: true}
-  - {symbol: CADJPY, timeframe: 1d, provider: mt5, profile: default, enabled: true}
-  - {symbol: AUDCHF, timeframe: 1d, provider: mt5, profile: tm_sma200, enabled: true}
+  - {symbol: CADJPY, timeframe: 1d, provider: mt5, profile: default, enabled: false}
+  - {symbol: AUDCHF, timeframe: 1d, provider: mt5, profile: tm_sma200, enabled: false}
   - {symbol: AUDGBP, timeframe: 4h, provider: mt5, profile: default, enabled: true}
   - {symbol: BTCUSDT, timeframe: 4h, provider: binance, profile: default, enabled: true}
   - {symbol: EURNZD, timeframe: 4h, provider: mt5, profile: default, enabled: true}
@@ -132,11 +137,11 @@ symbols:
   - {symbol: AUDCAD, timeframe: 4h, provider: mt5, profile: default, enabled: true}
   - {symbol: AUDEUR, timeframe: 4h, provider: mt5, profile: default, enabled: true}
   - {symbol: AUDJPY, timeframe: 4h, provider: mt5, profile: default, enabled: true}
-  - {symbol: AUDNZD, timeframe: 1d, provider: mt5, profile: default, enabled: true}
+  - {symbol: AUDNZD, timeframe: 1d, provider: mt5, profile: default, enabled: false}
   - {symbol: EURCAD, timeframe: 4h, provider: mt5, profile: default, enabled: true}
-  - {symbol: GBPCAD, timeframe: 1d, provider: mt5, profile: default, enabled: true}
-  - {symbol: AUDEUR, timeframe: 1d, provider: mt5, profile: default, enabled: true}
-  - {symbol: AUDJPY, timeframe: 1d, provider: mt5, profile: default, enabled: true}
+  - {symbol: GBPCAD, timeframe: 1d, provider: mt5, profile: default, enabled: false}
+  - {symbol: AUDEUR, timeframe: 1d, provider: mt5, profile: default, enabled: false}
+  - {symbol: AUDJPY, timeframe: 1d, provider: mt5, profile: default, enabled: false}
 
 # ---------------------------------------------------------------------------
 # Strategy state machine

@@ -343,7 +343,7 @@ Failures are isolated per symbol: one symbol erroring must not stop the others.
 | State machine | `conftest.make_bar()` builds deterministic candles around a 100.0 level; sequences cover valid/invalid/expiry/cooldown/sticky/confirmations |
 | Risk | sizing and rounding rules, incl. the `min_lot` skip |
 | Data layer | fake HTTP sessions and synthetic LZMA payloads — **no network in the suite** |
-| Parity | `tests/parity/reference_values.yaml` holds values transcribed from TradingView (3 BTCUSDT 1D cases); `parity_dumper.pine` recomputes all four indicators on the TV chart |
+| Parity | `tests/parity/reference_values.yaml` holds values transcribed from TradingView (3 BTCUSDT 1D + 2 BTCUSDT 4H cases); `parity_dumper.pine` recomputes all four indicators on the TV chart |
 | End-to-end | backtest over cached candles (planned) |
 
 Run with `python -m pytest`.
@@ -378,7 +378,7 @@ Run with `python -m pytest`.
 
 ## 9. Status and open gaps
 
-**Built and tested (246 unit tests passing):** config, all five candle sources,
+**Built and tested (249 unit tests passing):** config, all five candle sources,
 all ported indicators, the state machine, risk levels, SQLite persistence, the
 runtime (`runner.py` → fetch → indicators → both machines → store →
 `journal.jsonl` → notifiers, with per-symbol error isolation, bounded catch-up,
@@ -394,8 +394,10 @@ running at the end of the data are reported as `open`/`timeout` instead of being
 dropped. No spread/slippage is modelled — results are price-level results.
 First run over the full book: **44 signals, 40.9% win rate, +1.00R total**
 (expectancy +0.023R/trade at a 1.5R target), reported per symbol plus a total.
-After the VWAP anchor fix below the same run reports **146 signals, 41.8% win,
-+6.50R** — the fix is material, not cosmetic.
+After the VWAP anchor fix below the same 18-pair book reported **146 signals,
+41.8% win, +6.50R** — the fix is material, not cosmetic. The 8 dead 1D pairs were
+then disabled (see below), so the monitored book is **10 4H pairs: 136 signals,
+40.7% win, +2.50R** (expectancy +0.019R/trade).
 
 **CLI:**
 
@@ -403,12 +405,12 @@ After the VWAP anchor fix below the same run reports **146 signals, 41.8% win,
 |---|---|
 | `forexpert run` | live loop (`--once`, `--max-passes N`) |
 | `forexpert check` | read-only health table for every symbol: bars, volume, VWAP, ATR |
-| `forexpert backtest` | replay history (`--symbol`, `--timeframe`, `--bars`, `--max-hold`, `--json`) |
+| `forexpert backtest` | replay history (`--symbol`, `--timeframe`, `--bars`, `--max-hold`, `--json`); an explicit `--symbol` also reaches disabled pairs |
 
 **Live-verified:** FX volume (MT5, 17/17 symbol configs, volume never zero) and
-the full runner loop over 18 symbols — cold start baselines exactly one bar per
-symbol, a second process immediately after replays nothing and emits no
-duplicate signal.
+the full runner loop over the (then 18-pair) book — cold start baselines exactly
+one bar per symbol, a second process immediately after replays nothing and emits
+no duplicate signal.
 
 **Parity (green):** `tests/parity/` proves the ports against real TradingView
 values. Chart-data export is paywalled on a free plan and only ~2 indicators fit
@@ -431,6 +433,15 @@ collapses to a lagged-SMA/close test and the touch line equals close; on 4h
 symbols the VWAP resets daily. Known deviation: FX feeds whose daily bar opens
 off midnight UTC (most brokers) would need their own session boundary.
 
+**1D degeneracy (consequence of the fix, DONE):** because the session VWAP on a
+daily bar *is* the close, `touch_line: vwap` makes the state machine's first
+candle (`close` beyond the level) impossible — verified 0 signals over 3344
+daily bars, reaching `candle2_failed` only on float noise. Switching 1D to
+`ml_output` revives it barely (7 signals in 9 years vs 56 on 4H), so the strategy
+is intraday-only. The 8 1D pairs are now `enabled: false` in `config.yaml`; the
+monitored book is 10 4H pairs. An explicit `forexpert backtest --symbol X` still
+reaches a disabled pair, so a candidate can be tested before enabling it.
+
 **Open:**
 
 1. **Parity coverage** — 3 BTCUSDT 1D + 2 BTCUSDT 4H cases pass. The 4H cases
@@ -442,6 +453,9 @@ off midnight UTC (most brokers) would need their own session boundary.
    snapshot (not a session-rule bug, since session-first bars match) — needs a
    fresh read at a mid-session bar to confirm. Also consider a broker-day session
    boundary for the FX feeds.
-2. **KRO confirmation** — blocked on the missing `QuantraSystems` library source.
-3. **Live FX feed stability** — MetaQuotes demo history can be trimmed by the
+2. **1D viability** — re-enable the 8 1D pairs only with a different level or
+   anchoring (the ML VWAP degenerates on daily bars), and the expected signal
+   count is very low.
+3. **KRO confirmation** — blocked on the missing `QuantraSystems` library source.
+4. **Live FX feed stability** — MetaQuotes demo history can be trimmed by the
    broker; `DukascopySource` stays as a tested fallback.

@@ -1,0 +1,1 @@
+"""Indicator ports. Pure functions over pandas Series - no I/O, no global state."""

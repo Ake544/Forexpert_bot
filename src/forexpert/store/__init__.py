@@ -1,0 +1,1 @@
+"""Candle store + persisted strategy state (SQLite)."""

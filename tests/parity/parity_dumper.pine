@@ -1,0 +1,115 @@
+// Forexpert parity dumper
+//
+// Purpose: read TradingView-side indicator values with ONE indicator slot and
+// no chart-data export (export is paywalled on free plans, and the free plan
+// only allows a couple of indicators per chart).
+//
+// How to use:
+//   1. Pine Editor (bottom panel) -> paste this whole file -> Save.
+//   2. "Add to chart" -> a new pane appears with a table in its top-right corner.
+//   3. Read the three rows and send them back.
+//
+// The inputs default to config/config.yaml, so nothing needs changing.
+// Change the three `NW_BACK_*` constants below to report different bars
+// (values are "how many bars back from the newest bar").
+//
+// Source of every formula: Indicators.txt line numbers are quoted inline.
+
+//@version=5
+indicator("Forexpert parity dumper", overlay = false, max_bars_back = 5000)
+
+// ----------------------------------------------------------------- inputs
+mlWindow   = input.int(300, "ML Window", minval = 2)
+forecast   = input.int(1, "Forecast", minval = 0)
+sigma      = input.float(0.1, "Sigma", step = 0.01)
+fastLen    = input.int(5, "Trend fast length")
+fastType   = input.string("EMA", "Trend fast type", options = ["EMA", "SMA"])
+slowLen    = input.int(150, "Trend slow length")
+slowType   = input.string("SMA", "Trend slow type", options = ["EMA", "SMA"])
+vslrtShort = input.int(20, "VSLRT short length")
+vslrtLong  = input.int(64, "VSLRT long length")
+atrLen     = input.int(14, "ATR length")
+
+// bars to report, counted back from the newest bar (edit the three literals
+// in the table block below to match them)
+NW_BACK_1 = 1
+NW_BACK_2 = 20
+NW_BACK_3 = 200
+
+// --------------------------------------------------- VWAP Bands with ML
+// Indicators.txt 766-772
+src        = close
+vwap       = ta.vwap(src)
+mlBase     = ta.sma(src, mlWindow)
+mlAdjusted = mlBase + sigma * (vwap - mlBase)
+mlOutput   = mlAdjusted[forecast]
+
+// -------------------------------------------------- Trend Meter (TB1)
+// Indicators.txt 195-198, 239: Fast MA vs Slow MA crossover
+fast      = fastType == "SMA" ? ta.sma(src, fastLen) : ta.ema(src, fastLen)
+slow      = slowType == "SMA" ? ta.sma(src, slowLen) : ta.ema(src, slowLen)
+trendBull = fast > slow
+
+// -------------------------------------------------------------- VSLRT
+// Indicators.txt 851-852, 894
+slopeShort    = ta.linreg(src, vslrtShort, 0) - ta.linreg(src, vslrtShort, 1)
+slopeLong     = ta.linreg(src, vslrtLong, 0) - ta.linreg(src, vslrtLong, 1)
+vslrtLongLine = slopeLong * vslrtLong
+vslrtBull     = slopeLong > 0
+
+// ------------------------------------------------------------ NNFX ATR
+// Indicators.txt 1117-1133: RMA smoothing, then truncated to 5 decimals
+atrRaw = ta.rma(ta.tr(true), atrLen)
+atr    = math.floor(atrRaw * 100000) / 100000
+
+plot(vwap, "VWAP")
+plot(mlOutput, "ML Prediction")
+plot(vslrtLongLine, "VSLRT long")
+plot(atr, "Main ATR")
+
+// ---------------------------------------------------------- the report
+tbl = table.new(position.top_right, columns = 9, rows = 4, border_width = 1)
+
+if barstate.islast
+    table.cell(tbl, 0, 0, "bar (UTC)",       text_size = size.small, bgcolor = color.gray, text_color = color.white)
+    table.cell(tbl, 1, 0, "close",           text_size = size.small, bgcolor = color.gray, text_color = color.white)
+    table.cell(tbl, 2, 0, "vwap",            text_size = size.small, bgcolor = color.gray, text_color = color.white)
+    table.cell(tbl, 3, 0, "ml_output",       text_size = size.small, bgcolor = color.gray, text_color = color.white)
+    table.cell(tbl, 4, 0, "vslrt_long",      text_size = size.small, bgcolor = color.gray, text_color = color.white)
+    table.cell(tbl, 5, 0, "atr",             text_size = size.small, bgcolor = color.gray, text_color = color.white)
+    table.cell(tbl, 6, 0, "trend_bull",      text_size = size.small, bgcolor = color.gray, text_color = color.white)
+    table.cell(tbl, 7, 0, "vslrt_bull",      text_size = size.small, bgcolor = color.gray, text_color = color.white)
+    table.cell(tbl, 8, 0, "volume",          text_size = size.small, bgcolor = color.gray, text_color = color.white)
+
+    // row 1: newest closed bar
+    table.cell(tbl, 0, 1, str.format_time(time[NW_BACK_1], "yyyy-MM-dd'T'HH:mm:ssZ", "UTC"), text_size = size.small)
+    table.cell(tbl, 1, 1, str.tostring(close[NW_BACK_1], "#.########"), text_size = size.small)
+    table.cell(tbl, 2, 1, str.tostring(vwap[NW_BACK_1], "#.########"), text_size = size.small)
+    table.cell(tbl, 3, 1, str.tostring(mlOutput[NW_BACK_1], "#.########"), text_size = size.small)
+    table.cell(tbl, 4, 1, str.tostring(vslrtLongLine[NW_BACK_1], "#.########"), text_size = size.small)
+    table.cell(tbl, 5, 1, str.tostring(atr[NW_BACK_1], "#.########"), text_size = size.small)
+    table.cell(tbl, 6, 1, str.tostring(trendBull[NW_BACK_1]), text_size = size.small)
+    table.cell(tbl, 7, 1, str.tostring(vslrtBull[NW_BACK_1]), text_size = size.small)
+    table.cell(tbl, 8, 1, str.tostring(volume[NW_BACK_1], "#.########"), text_size = size.small)
+
+    // row 2
+    table.cell(tbl, 0, 2, str.format_time(time[NW_BACK_2], "yyyy-MM-dd'T'HH:mm:ssZ", "UTC"), text_size = size.small)
+    table.cell(tbl, 1, 2, str.tostring(close[NW_BACK_2], "#.########"), text_size = size.small)
+    table.cell(tbl, 2, 2, str.tostring(vwap[NW_BACK_2], "#.########"), text_size = size.small)
+    table.cell(tbl, 3, 2, str.tostring(mlOutput[NW_BACK_2], "#.########"), text_size = size.small)
+    table.cell(tbl, 4, 2, str.tostring(vslrtLongLine[NW_BACK_2], "#.########"), text_size = size.small)
+    table.cell(tbl, 5, 2, str.tostring(atr[NW_BACK_2], "#.########"), text_size = size.small)
+    table.cell(tbl, 6, 2, str.tostring(trendBull[NW_BACK_2]), text_size = size.small)
+    table.cell(tbl, 7, 2, str.tostring(vslrtBull[NW_BACK_2]), text_size = size.small)
+    table.cell(tbl, 8, 2, str.tostring(volume[NW_BACK_2], "#.########"), text_size = size.small)
+
+    // row 3
+    table.cell(tbl, 0, 3, str.format_time(time[NW_BACK_3], "yyyy-MM-dd'T'HH:mm:ssZ", "UTC"), text_size = size.small)
+    table.cell(tbl, 1, 3, str.tostring(close[NW_BACK_3], "#.########"), text_size = size.small)
+    table.cell(tbl, 2, 3, str.tostring(vwap[NW_BACK_3], "#.########"), text_size = size.small)
+    table.cell(tbl, 3, 3, str.tostring(mlOutput[NW_BACK_3], "#.########"), text_size = size.small)
+    table.cell(tbl, 4, 3, str.tostring(vslrtLongLine[NW_BACK_3], "#.########"), text_size = size.small)
+    table.cell(tbl, 5, 3, str.tostring(atr[NW_BACK_3], "#.########"), text_size = size.small)
+    table.cell(tbl, 6, 3, str.tostring(trendBull[NW_BACK_3]), text_size = size.small)
+    table.cell(tbl, 7, 3, str.tostring(vslrtBull[NW_BACK_3]), text_size = size.small)
+    table.cell(tbl, 8, 3, str.tostring(volume[NW_BACK_3], "#.########"), text_size = size.small)

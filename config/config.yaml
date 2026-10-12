@@ -1,0 +1,190 @@
+# Forexpert configuration.
+# Every value here can be overridden per symbol via `profiles`.
+# Secrets are NEVER stored here: use ${ENV_VAR} references (see config/.env.example).
+
+runtime:
+  timezone: UTC                 # all timestamps are stored and compared in UTC
+  log_level: INFO
+  log_format: "%(asctime)s %(levelname)-7s %(name)s | %(message)s"
+  db_path: data/forexpert.sqlite
+  max_bars_in_memory: 1000
+  wake_delay_seconds: 5         # wake this many seconds after a candle close
+  max_catchup_bars: 20          # on restart, replay at most N missing closed bars
+
+data:
+  provider: mt5                   # twelve_data | binance | dukascopy | mt5 | csv
+  volume_policy: strict         # strict = never compute VWAP without volume
+  request_timeout_seconds: 20
+  max_retries: 4
+  retry_backoff_seconds: 2.0
+
+  twelve_data:
+    base_url: https://api.twelvedata.com
+    api_key: ${TWELVE_DATA_API_KEY}
+    requests_per_minute: 8         # free tier ceiling; shared across all symbols
+    interval_map:
+      1m: 1min
+      5m: 5min
+      15m: 15min
+      1h: 1h
+      4h: 4h
+      1d: 1day
+    outputsize: 1000
+
+  binance:
+    base_url: https://api.binance.com
+    requests_per_minute: 60
+    interval_map:
+      1m: 1m
+      5m: 5m
+      15m: 15m
+      1h: 1h
+      4h: 4h
+      1d: 1d
+    limit: 1000
+
+  dukascopy:
+    base_url: https://datafeed.dukascopy.com/datafeed
+    price_field: mid              # mid | bid | ask  (tick price used for OHLC)
+    volume_mode: ticks            # ticks = tick count (what TradingView FX shows)
+    requests_per_minute: 120
+    max_workers: 3                # hours are fetched concurrently
+    max_retries: 8                # the CDN returns 503/429 fairly often
+    retry_backoff_seconds: 1.0
+
+  csv:
+    directory: data/csv
+    timestamp_column: time
+    timestamp_format: ISO8601
+
+  # MetaTrader 5 — the FX volume feed. Real broker tick volume for every cross,
+  # so ML VWAP works on FX. Requires the MT5 terminal installed and logged in.
+  mt5:
+    terminal_path: ""             # empty = the installed default terminal
+    login: ${MT5_LOGIN}           # 0/empty = reuse the terminal's own session
+    password: ${MT5_PASSWORD}
+    server: ${MT5_SERVER}
+    symbol_suffix: ""             # broker renames, e.g. EURCHF.pro or EURCHFm
+    volume_mode: tick_volume      # tick_volume = TradingView's FX volume | real_volume
+    requests_per_minute: 1000000  # local IPC, no external quota
+
+# ---------------------------------------------------------------------------
+# Indicator profiles
+# ---------------------------------------------------------------------------
+profiles:
+  default:
+    ml_vwap:
+      window: 300               # "ML Window"
+      forecast: 1               # "Forecast" - shifts the ML line FORWARD 1 bar
+      sigma: 0.1
+      band1_multiplier: 2.0
+      band2_multiplier: 3.0
+    trend_meter:
+      mode: crossover            # crossover | slow_direction | three_meters
+      fast_type: EMA
+      fast_length: 5
+      slow_type: SMA
+      slow_length: 150
+    vslrt:
+      short_length: 20
+      long_length: 64
+    kro:
+      enabled: false             # BLOCKED: imported QuantraSystems library not ported yet
+      bandwidth: 300
+      width: 2.0
+      sd_lookback: 150
+      sd_extreme: 3.0
+      mintick: 0.01
+    atr:
+      length: 14
+      smoothing: RMA
+      tp_multiplier: 2.25
+      sl_multiplier: 1.5
+      decimals: 5
+
+  # Variants that appear in trading strategy.docx. Disabled by default because the
+  # confirmed strategy uses ML window 300 everywhere; enable per symbol as needed.
+  ml350:
+    extends: default
+    ml_vwap:
+      window: 350
+
+  tm_sma200:
+    extends: default
+    trend_meter:
+      slow_length: 200
+
+# ---------------------------------------------------------------------------
+# Symbols under monitoring
+# (symbol, timeframe) pairs transcribed from trading strategy.docx
+# ---------------------------------------------------------------------------
+symbols:
+  - {symbol: NZDCAD, timeframe: 1d, provider: mt5, profile: default, enabled: true}
+  - {symbol: CHFJPY, timeframe: 4h, provider: mt5, profile: default, enabled: true}
+  - {symbol: EURCHF, timeframe: 1d, provider: mt5, profile: default, enabled: true}
+  - {symbol: GBPJPY, timeframe: 4h, provider: mt5, profile: default, enabled: true}
+  - {symbol: CADJPY, timeframe: 1d, provider: mt5, profile: default, enabled: true}
+  - {symbol: AUDCHF, timeframe: 1d, provider: mt5, profile: tm_sma200, enabled: true}
+  - {symbol: AUDGBP, timeframe: 4h, provider: mt5, profile: default, enabled: true}
+  - {symbol: BTCUSDT, timeframe: 4h, provider: binance, profile: default, enabled: true}
+  - {symbol: EURNZD, timeframe: 4h, provider: mt5, profile: default, enabled: true}
+  - {symbol: CADCHF, timeframe: 4h, provider: mt5, profile: default, enabled: true}
+  - {symbol: AUDCAD, timeframe: 4h, provider: mt5, profile: default, enabled: true}
+  - {symbol: AUDEUR, timeframe: 4h, provider: mt5, profile: default, enabled: true}
+  - {symbol: AUDJPY, timeframe: 4h, provider: mt5, profile: default, enabled: true}
+  - {symbol: AUDNZD, timeframe: 1d, provider: mt5, profile: default, enabled: true}
+  - {symbol: EURCAD, timeframe: 4h, provider: mt5, profile: default, enabled: true}
+  - {symbol: GBPCAD, timeframe: 1d, provider: mt5, profile: default, enabled: true}
+  - {symbol: AUDEUR, timeframe: 1d, provider: mt5, profile: default, enabled: true}
+  - {symbol: AUDJPY, timeframe: 1d, provider: mt5, profile: default, enabled: true}
+
+# ---------------------------------------------------------------------------
+# Strategy state machine
+# ---------------------------------------------------------------------------
+strategy:
+  touch_line: vwap              # vwap = anchored VWAP line | ml_output = shifted ML line
+  touch_definition: wick         # wick = low <= level <= high | close = close <= level
+  expiry_bars: 10                # setup dies after N bars beyond candle 2
+  expire_on_wrong_side_close: true
+  filters_on_entry_bar: true     # false = "true at any time since the setup began"
+  entry_price: close             # close = close of the touch candle | level = the VWAP level
+  cooldown_bars: 3
+  reseed_candle1_on_failure: false  # true = a failed candle 2 can become a new candle 1
+
+# ---------------------------------------------------------------------------
+# Risk (alert only for now - journal records the levels, nothing is executed)
+# ---------------------------------------------------------------------------
+risk:
+  risk_percent_per_trade: 1.0
+  account_balance: 1000.0
+  min_lot: 0.01
+  lot_step: 0.01
+  max_lot: 100.0
+  assumed_contract_size: 100000.0
+
+# ---------------------------------------------------------------------------
+# Notifications
+# ---------------------------------------------------------------------------
+notifier:
+  telegram:
+    enabled: false           # flip on and set TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID
+    bot_token: ${TELEGRAM_BOT_TOKEN}
+    chat_id: ${TELEGRAM_CHAT_ID}
+    parse_mode: HTML
+    max_retries: 5
+    retry_backoff_seconds: 3.0
+  discord:
+    enabled: true
+    webhook_url: ${DISCORD_WEBHOOK_URL}
+    max_retries: 5
+    retry_backoff_seconds: 3.0
+
+journal:
+  enabled: true
+  path: data/journal.jsonl
+
+alerts:
+  stale_data_bars: 3            # notify if no new closed candle for N bars
+  error_alerts: true            # notify when a symbol pass fails
+  error_cooldown_minutes: 30    # ... but at most once per symbol per window
+  notify_on_startup: true       # one "Forexpert started" message per process

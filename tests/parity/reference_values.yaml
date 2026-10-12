@@ -1,0 +1,76 @@
+# TradingView parity reference values.
+#
+# Fill `cases` with values read off TradingView (see README.md). While this list
+# is empty every test below is skipped, so the suite still runs.
+#
+# cases:
+#   - bar_time: "2024-03-01T08:00:00+00:00"
+#     csv_file: candles_example.csv
+#     ml_window: 300
+#     vwap: 1.0843123
+#     ml_output: 1.0851000
+#     trend_fast: 1.0860000
+#     trend_slow: 1.0810000
+#     vslrt_long_line: 0.000421
+#     atr: 0.001234
+#     tolerance: 1.0e-6
+
+cases:
+  # Read off TradingView (BTCUSDT, 1D, BINANCE, UTC) with tests/parity/parity_dumper.pine,
+  # which mirrors the Pine formulas one-for-one. Candles: BTCUSDT-1d.csv (Binance REST).
+  - bar_time: "2026-10-11T00:00:00+00:00"
+    csv_file: BTCUSDT-1d.csv
+    ml_window: 300
+    vwap: 83773.12
+    ml_output: 75185.74529
+    vslrt_long_line: 20167.50706227
+    atr: 2064.79733
+    trend_bull: true
+    vslrt_bull: true
+    tolerance: 1.0e-6
+
+  - bar_time: "2026-09-22T00:00:00+00:00"
+    csv_file: BTCUSDT-1d.csv
+    ml_window: 300
+    vwap: 86208.56
+    ml_output: 75911.67016
+    vslrt_long_line: 22457.53859341
+    atr: 2445.49669
+    trend_bull: true
+    vslrt_bull: true
+    tolerance: 1.0e-6
+
+  - bar_time: "2026-03-26T00:00:00+00:00"
+    csv_file: BTCUSDT-1d.csv
+    ml_window: 300
+    vwap: 68820.31
+    ml_output: 95870.48929
+    vslrt_long_line: -13998.89942857
+    atr: 2888.67687
+    trend_bull: false
+    vslrt_bull: false
+    tolerance: 1.0e-6
+
+  # 4H cases (BINANCE:BTCUSDT, 4H, UTC). Both bars are the first bar of their
+  # UTC session, so the session VWAP equals close on both sides.
+  - bar_time: "2026-10-09T00:00:00+00:00"
+    csv_file: BTCUSDT-4h.csv
+    ml_window: 300
+    vwap: 82427.72
+    ml_output: 80584.98149939
+    vslrt_long_line: -76.8695231
+    atr: 863.31781
+    trend_bull: false
+    vslrt_bull: false
+    tolerance: 1.0e-5
+
+  - bar_time: "2026-09-09T00:00:00+00:00"
+    csv_file: BTCUSDT-4h.csv
+    ml_window: 300
+    vwap: 78638.01
+    ml_output: 70745.58505886
+    vslrt_long_line: 1626.1443663
+    atr: 691.07821
+    trend_bull: true
+    vslrt_bull: true
+    tolerance: 1.0e-5

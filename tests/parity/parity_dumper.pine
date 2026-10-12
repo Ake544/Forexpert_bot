@@ -34,9 +34,9 @@ vslrtLong  = input.int(64, "VSLRT long length")
 atrLen     = input.int(14, "ATR length")
 
 // bars to report, as absolute UTC bar-open times (edit these three)
-target1    = input.time(timestamp("2026-10-12T04:00:00Z"), "Target 1 (UTC)")
-target2    = input.time(timestamp("2026-10-09T12:00:00Z"), "Target 2 (UTC)")
-target3    = input.time(timestamp("2026-09-09T12:00:00Z"), "Target 3 (UTC)")
+target1    = input.time(timestamp("2026-10-12T04:00:00", "UTC"), "Target 1 (UTC)")
+target2    = input.time(timestamp("2026-10-09T12:00:00", "UTC"), "Target 2 (UTC)")
+target3    = input.time(timestamp("2026-09-09T12:00:00", "UTC"), "Target 3 (UTC)")
 
 // --------------------------------------------------- VWAP Bands with ML
 // Indicators.txt 766-772
